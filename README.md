@@ -178,30 +178,105 @@ Create a `config.json` file for batch processing:
 
 ```json
 {
-  "output_dir": "./output",
-  "temp_dir": "./temp",
-  "tasks": [
-    {
-      "type": "download",
-      "url": "https://example.com/video.mp4",
-      "output_name": "downloaded_video",
-      "output_extension": "mp4"
+    "global_settings": {
+        "output_extension": "mp4",
+        "video_codec": "copy",
+        "audio_codec": "copy"
     },
-    {
-      "type": "split",
-      "source_file": "large_video.mp4",
-      "target_size_mb": 500,
-      "output_name": "segment",
-      "output_extension": "mp4"
-    },
-    {
-      "type": "clip",
-      "source_file": "movie.mp4",
-      "intervals": [[30, 90], [120, 180]],
-      "output_name": "clip",
-      "output_extension": "mp4"
-    }
-  ]
+    "tasks": [
+        {
+            "order": 1,
+            "type": "download",
+            "parameters": {
+                "url": "sample_video.mp4",
+                "output_filename": "sample_video.mp4"
+            }
+        },
+        {
+            "order": 2,
+            "type": "split",
+            "parameters": {
+                "source_file": "sample_video.mp4",
+                "output_name": "sample_segment",
+                "output_extension": "mp4",
+                "max_size": "500KB"
+            }
+        },
+        {
+            "order": 3,
+            "type": "clip",
+            "parameters": {
+                "source_file": "sample_video.mp4",
+                "output_name": "sample_clip",
+                "output_extension": "mp4",
+                "intervals": [
+                    {"start": "0", "end": "5"},
+                    {"start": "5", "end": "10"}
+                ]
+            }
+        }
+    ],
+    "batch_tasks":[
+        {
+            "type": "download",
+            "task_path, ": "./videos",
+            "is_parallel": true,
+            "tasks":[
+                {
+                    "url": "https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4",
+                    "output_filename": "sample_video_1.mp4"
+                },
+                {
+                    "url": "https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_5mb.mp4",
+                    "output_filename": "sample_video_2.mp4"
+                }
+            ]
+        },       
+        { 
+            "type": "split",
+            "task_path, ": "./videos",
+            "is_parallel": false,
+            "tasks":[
+                {
+                    "source_file": "sample_video_1.mp4",
+                    "output_name": "sample_segment_1",
+                    "output_extension": "mp4",
+                    "max_size": "500KB"
+                },
+                {
+                    "source_file": "sample_video_2.mp4",
+                    "output_name": "sample_segment_2",
+                    "output_extension": "mp4",
+                    "max_size": "1MB"
+                }
+            ]
+        },
+        {
+            "type":"clip", 
+            "task_path, ": "./videos",
+            "is_parallel": false,
+            "tasks":[
+                {
+                    "source_file": "sample_video_1.mp4",
+                    "output_name": "sample_clip_1",
+                    "output_extension": "mp4",
+                    "intervals": [
+                        {"start": "0", "end": "5"},
+                        {"start": "5", "end": "10"}
+                    ]
+                },
+                {
+                    "source_file": "sample_video_2.mp4",
+                    "output_name": "sample_clip_2",
+                    "output_extension": "mp4",
+                    "intervals": [
+                        {"start": "10", "end": "15"},
+                        {"start": "15", "end": "20"}
+                    ]
+                }
+            ]
+        }
+    ]
 }
 ```
 
