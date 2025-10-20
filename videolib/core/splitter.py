@@ -31,6 +31,36 @@ class SplitResult:
             self.output_files = []
         if self.oversized_files is None:
             self.oversized_files = []
+    
+    def __str__(self) -> str:
+        """String representation for better UI display"""
+        if not self.success:
+            return f"Split failed: {self.error_message or 'Unknown error'}"
+        
+        lines = []
+        if self.was_copied:
+            lines.append("-> File was already smaller than target size and was copied")
+        else:
+            lines.append(f"-> Successfully split video into {len(self.output_files)} segment(s)")
+        
+        if self.output_files:
+            lines.append("\n-> Output segments:")
+            for i, file_path in enumerate(self.output_files, 1):
+                file_size = FileManager.get_file_size(file_path)
+                if file_size:
+                    size_str = FormatParser.format_file_size(file_size)
+                    lines.append(f"   {i}. {FileManager.get_basename(file_path)} ({size_str})")
+                else:
+                    lines.append(f"   {i}. {FileManager.get_basename(file_path)}")
+        
+        if self.oversized_files:
+            lines.append(f"\n-> Warning: {len(self.oversized_files)} file(s) exceeded target size:")
+            for oversized in self.oversized_files:
+                file_size = FileManager.get_file_size(oversized)
+                size_str = FormatParser.format_file_size(file_size) if file_size else "Unknown"
+                lines.append(f"   - {FileManager.get_basename(oversized)} ({size_str})")
+        
+        return '\n'.join(lines)
 
 class VideoSplitter:
     """Video splitter class"""
