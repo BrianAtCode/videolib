@@ -1,6 +1,7 @@
 """
 FFmpeg wrapper module - provides OOP interface to FFmpeg operations
 """
+import glob
 import os
 import json
 import subprocess
@@ -193,10 +194,11 @@ class DownloadCommand(FFmpegCommand):
 class SegmentCommand(FFmpegCommand):
     """FFmpeg segment command"""
     
-    def __init__(self, wrapper: FFmpegWrapper, input_path: str, output_pattern: str, segment_duration: float):
+    def __init__(self, wrapper: FFmpegWrapper, input_path: str, output_pattern: str, pattern_keyword: str, segment_duration: float):
         self.wrapper = wrapper
         self.input_path = input_path
         self.output_pattern = output_pattern
+        self.pattern_keyword = pattern_keyword
         self.segment_duration = segment_duration
     
     def build_command(self) -> List[str]:
@@ -226,15 +228,13 @@ class SegmentCommand(FFmpegCommand):
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             
             # Find created segments
-            pattern_base = os.path.splitext(self.output_pattern)[0]
-            pattern_ext = os.path.splitext(self.output_pattern)[1]
             output_dir = os.path.dirname(self.output_pattern) or "."
-            
+            glob_pattern = self.output_pattern.replace(self.pattern_keyword, '*')
+
             segments = []
             try:
-                for file in os.listdir(output_dir):
-                    if file.startswith(os.path.basename(pattern_base)) and file.endswith(pattern_ext):
-                        segments.append(os.path.join(output_dir, file))
+                segments = glob.glob(glob_pattern)
+                segments = [os.path.join(output_dir, os.path.basename(f)) for f in segments]
                 segments.sort()
             except OSError:
                 pass

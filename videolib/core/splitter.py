@@ -100,15 +100,16 @@ class VideoSplitter:
     def _perform_segmentation(self, options: SplitOptions, segment_duration: float) -> SplitResult:
         """Perform FFmpeg segmentation"""
         # Build output pattern
-        pattern = f"{options.output_name}_%03d.{options.output_extension}"
+        pattern_keyword = '%03d'
+        pattern = f"{options.output_name}_{pattern_keyword}.{options.output_extension}"
         
         # Execute segment command
-        segment_cmd = SegmentCommand(self.ffmpeg, options.source_file, pattern, segment_duration)
+        segment_cmd = SegmentCommand(self.ffmpeg, options.source_file, pattern, pattern_keyword, segment_duration)
         result = segment_cmd.execute()
         
         if not result.success:
             return SplitResult(success=False, error_message=result.error_message)
-        
+
         # Process segments for oversized files
         return self._process_segments(result.output_files, options)
     
@@ -175,10 +176,11 @@ class VideoSplitter:
         base_name = segment_path.rsplit('.', 1)[0]
         extension = segment_path.rsplit('.', 1)[1] if '.' in segment_path else 'mp4'
         unique_id = uuid.uuid4().hex[:6]
-        temp_pattern = f"{base_name}_sub_{unique_id}_%03d.{extension}"
+        pattern_keyword = '%03d'
+        temp_pattern = f"{base_name}_sub_{unique_id}_{pattern_keyword}.{extension}"
         
         # Execute segmentation
-        segment_cmd = SegmentCommand(self.ffmpeg, segment_path, temp_pattern, new_duration)
+        segment_cmd = SegmentCommand(self.ffmpeg, segment_path, temp_pattern, pattern_keyword, new_duration)
         result = segment_cmd.execute()
         
         if not result.success:
