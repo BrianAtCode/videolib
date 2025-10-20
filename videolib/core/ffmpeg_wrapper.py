@@ -4,6 +4,7 @@ FFmpeg wrapper module - provides OOP interface to FFmpeg operations
 import os
 import json
 import subprocess
+import glob
 from typing import Optional, Dict, Any, Tuple, List
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -225,19 +226,30 @@ class SegmentCommand(FFmpegCommand):
         try:
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             
-            # Find created segments
-            pattern_base = os.path.splitext(self.output_pattern)[0]
-            pattern_ext = os.path.splitext(self.output_pattern)[1]
-            output_dir = os.path.dirname(self.output_pattern) or "."
+            # Find created segments using glob pattern
+            # Convert %03d pattern to glob pattern
+            glob_pattern = self.output_pattern.replace('%03d', '*')
+            segments = glob.glob(glob_pattern)
             
-            segments = []
-            try:
-                for file in os.listdir(output_dir):
-                    if file.startswith(os.path.basename(pattern_base)) and file.endswith(pattern_ext):
-                        segments.append(os.path.join(output_dir, file))
-                segments.sort()
-            except OSError:
-                pass
+            # If glob didn't find anything, try the old method as fallback
+            if not segments:
+                pattern_base = os.path.splitext(self.output_pattern)[0]
+                pattern_ext = os.path.splitext(self.output_pattern)[1]
+                output_dir = os.path.dirname(self.output_pattern) or "."
+                
+                try:
+                    for file in os.listdir(output_dir):
+                        file_path = os.path.join(output_dir, file)
+                        # Check if file matches the pattern base and extension
+                        if (file.startswith(os.path.basename(pattern_base.replace('%03d', ''))) and 
+                            file.endswith(pattern_ext) and 
+                            os.path.isfile(file_path)):
+                            segments.append(file_path)
+                except OSError:
+                    pass
+            
+            # Sort segments to ensure proper order
+            segments.sort()
             
             return FFmpegResult(success=True, output_files=segments)
             
