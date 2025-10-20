@@ -1,6 +1,7 @@
 """
 Format and parsing utilities for video processing
 """
+import os
 import re
 from typing import Optional, Union
 
