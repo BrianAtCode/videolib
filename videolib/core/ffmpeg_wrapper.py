@@ -5,6 +5,7 @@ import os
 import json
 import subprocess
 import glob
+import re
 from typing import Optional, Dict, Any, Tuple, List
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -226,27 +227,8 @@ class SegmentCommand(FFmpegCommand):
         try:
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             
-            # Find created segments using glob pattern
-            # Convert %03d pattern to glob pattern
-            glob_pattern = self.output_pattern.replace('%03d', '*')
-            segments = glob.glob(glob_pattern)
-            
-            # If glob didn't find anything, try the old method as fallback
-            if not segments:
-                pattern_base = os.path.splitext(self.output_pattern)[0]
-                pattern_ext = os.path.splitext(self.output_pattern)[1]
-                output_dir = os.path.dirname(self.output_pattern) or "."
-                
-                try:
-                    for file in os.listdir(output_dir):
-                        file_path = os.path.join(output_dir, file)
-                        # Check if file matches the pattern base and extension
-                        if (file.startswith(os.path.basename(pattern_base.replace('%03d', ''))) and 
-                            file.endswith(pattern_ext) and 
-                            os.path.isfile(file_path)):
-                            segments.append(file_path)
-                except OSError:
-                    pass
+            # Find created segments using improved pattern matching
+            segments = self._find_segment_files()
             
             # Sort segments to ensure proper order
             segments.sort()
@@ -257,6 +239,64 @@ class SegmentCommand(FFmpegCommand):
             return FFmpegResult(success=False, error_message=f"FFmpeg segmentation failed: {e.stderr}")
         except Exception as e:
             return FFmpegResult(success=False, error_message=str(e))
+    
+    def _find_segment_files(self) -> List[str]:
+        """Find segment files using multiple detection methods"""
+        segments = []
+        
+        # Method 1: Direct glob pattern conversion
+        # Convert %03d pattern to * glob pattern
+        glob_pattern = self.output_pattern.replace('%03d', '*')
+        segments = glob.glob(glob_pattern)
+        
+        if segments:
+            return segments
+        
+        # Method 2: Regex-based pattern matching
+        # For patterns like "ipvr-285-1_segment_%03d.mp4"
+        # Convert to regex: "ipvr-285-1_segment_\d{3}\.mp4"
+        try:
+            # Escape special regex characters in the pattern
+            escaped_pattern = re.escape(self.output_pattern)
+            # Replace the escaped %03d with actual regex for 3 digits
+            regex_pattern = escaped_pattern.replace(r'\%03d', r'\d{3}')
+            
+            output_dir = os.path.dirname(self.output_pattern) or "."
+            
+            if os.path.exists(output_dir):
+                for file in os.listdir(output_dir):
+                    if re.match(regex_pattern, file):
+                        segments.append(os.path.join(output_dir, file))
+        except (OSError, re.error):
+            pass
+        
+        if segments:
+            return segments
+        
+        # Method 3: Fallback - pattern decomposition
+        # Extract the base pattern and extension
+        try:
+            output_dir = os.path.dirname(self.output_pattern) or "."
+            
+            # Split pattern into parts: prefix + %03d + suffix
+            if '%03d' in self.output_pattern:
+                pattern_parts = self.output_pattern.split('%03d')
+                if len(pattern_parts) == 2:
+                    prefix = os.path.basename(pattern_parts[0])  # Get just the filename part
+                    suffix = pattern_parts[1]
+                    
+                    if os.path.exists(output_dir):
+                        for file in os.listdir(output_dir):
+                            # Check if file matches: starts with prefix and ends with suffix
+                            if file.startswith(prefix) and file.endswith(suffix):
+                                # Additional check: ensure there are digits between prefix and suffix
+                                middle_part = file[len(prefix):-len(suffix)] if suffix else file[len(prefix):]
+                                if middle_part.isdigit():
+                                    segments.append(os.path.join(output_dir, file))
+        except (OSError, IndexError):
+            pass
+        
+        return segments
 
 class ClipCommand(FFmpegCommand):
     """FFmpeg clip command"""
