@@ -86,11 +86,6 @@ class FileManager:
             return None
     
     @staticmethod
-    def get_basename(file_path: str) -> str:
-        """Get basename (filename with extension) from file path"""
-        return os.path.basename(file_path)
-    
-    @staticmethod
     def list_files_with_pattern(directory: str, prefix: str, extension: str) -> List[str]:
         """List files matching prefix and extension pattern"""
         try:
