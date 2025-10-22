@@ -150,6 +150,68 @@ class VideoGifConverter(GifConverterInterface):
             
         except Exception as e:
             return self._error_result(str(e), start_time)
+        
+    def create_one_click_gif(self, source_file: str, output_name: str = "oneclick") -> GifResult:
+        """One-click video to GIF conversion with automatic settings"""
+        start_time = time.time()
+        
+        try:
+            # Get video duration
+            media_info_result = self.ffmpeg.probe_media(source_file)
+            if not media_info_result.success or not media_info_result.media_info:
+                return self._error_result("Could not analyze video file", start_time)
+            
+            total_duration = media_info_result.media_info.duration
+            if not total_duration or total_duration <= 0:
+                return self._error_result("Invalid video duration", start_time)
+            
+            # ✅ AUTOMATIC SETTINGS CALCULATION
+            num_clips = 30  # Fixed number of clips as requested
+            
+            # Calculate optimal clip duration and gap
+            if total_duration <= 30:
+                # Short video: Use 1-second clips with no gap
+                gif_duration = 1.0
+                time_gap = max(0, (total_duration - num_clips) / (num_clips - 1)) if num_clips > 1 else 0
+            elif total_duration <= 300:  # 5 minutes
+                # Medium video: Use 2-second clips with small gaps
+                gif_duration = 2.0
+                time_gap = max(0, (total_duration - (num_clips * gif_duration)) / (num_clips - 1)) if num_clips > 1 else 0
+            else:
+                # Long video: Use 3-second clips with calculated gaps to cover full duration
+                gif_duration = 3.0
+                time_gap = max(0, (total_duration - (num_clips * gif_duration)) / (num_clips - 1)) if num_clips > 1 else 0
+            
+            print(f"🚀 One-Click Auto Settings:")
+            print(f"   Video Duration: {self._format_duration(total_duration)}")
+            print(f"   Clips: {num_clips} clips of {gif_duration}s each")
+            print(f"   Time Gap: {time_gap:.1f}s between clips")
+            print(f"   Coverage: {self._format_duration(num_clips * gif_duration + (num_clips-1) * time_gap)}")
+            print()
+            
+            # Create auto options with optimal settings
+            options = AutoGifOptions(
+                source_file=source_file,
+                num_clips=num_clips,
+                gif_duration=gif_duration,
+                time_gap=time_gap,
+                output_name=output_name,
+                fps=12,  # Good balance of quality and size
+                scale_width=480,  # Reasonable resolution
+                quality_level="medium",  # Balanced quality
+                create_thumbnails=True,
+                create_grid=True,
+                merge_gifs=False,  # Use video-first workflow (no GIF merging)
+                grid_size=6,  # 6x5 grid for 30 clips
+                cleanup_individual_thumbs=True  # Clean output by default
+            )
+            
+            # Use the existing auto-generation workflow
+            return self.create_auto_generated_clips(options)
+            
+        except Exception as e:
+            return self._error_result(str(e), start_time)
+
 
     def _cleanup_individual_thumbnails(self, thumbnail_files: List[str], grid_file: str) -> List[str]:
         """Remove individual thumbnail files, keeping only the grid file"""
@@ -607,7 +669,6 @@ class VideoGifConverter(GifConverterInterface):
             processing_time=time.time() - start_time
         )
 
-
 # Convenience functions
 def create_gif_clips(source_file: str, total_duration: float, num_clips: int,
                     clip_duration: float, output_name: str = "clip", **kwargs) -> GifResult:
@@ -628,3 +689,17 @@ def create_auto_gif_clips(source_file: str, num_clips: int, gif_duration: float,
         time_gap=time_gap, output_name=output_name, **kwargs
     )
     return converter.create_auto_generated_clips(options)
+
+def create_one_click_gif(source_file: str, output_name: str = "oneclick") -> GifResult:
+    """
+    One-click video to GIF conversion with automatic optimal settings
+    
+    Args:
+        source_file: Path to source video
+        output_name: Base name for output files
+        
+    Returns:
+        GifResult with final GIF and thumbnail grid
+    """
+    converter = VideoGifConverter()
+    return converter.create_one_click_gif(source_file, output_name)

@@ -138,7 +138,11 @@ class VideoProcessor:
         )
         
         return self.gif_converter.create_auto_generated_clips(options)
-
+    
+    def create_one_click_gif(self, source_file: str, output_name: str = "oneclick") -> GifResult:
+        """One-click video to GIF conversion with automatic optimal settings"""
+        return self.gif_converter.create_one_click_gif(source_file, output_name)
+    
     def process_batch(self, tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Process multiple tasks in sequence"""
         results = []
