@@ -49,6 +49,8 @@ class AutoGifOptions:
     merge_gifs: bool = True
     grid_size: int = 5
     cleanup_individual_thumbs: bool = False
+    final_gif_width: int = 640 
+    final_gif_height: int = 0  
 
 class GifConverterInterface(ABC):
     """Abstract interface for GIF conversion operations"""

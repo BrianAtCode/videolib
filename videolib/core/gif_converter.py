@@ -182,10 +182,14 @@ class VideoGifConverter(GifConverterInterface):
                 gif_duration = 3.0
                 time_gap = max(0, (total_duration - (num_clips * gif_duration)) / (num_clips - 1)) if num_clips > 1 else 0
             
+            #Calculate optimal final resolution (max 1440x1080)
+            final_width, final_height = self._get_optimal_final_resolution(source_file, 1440, 1080)
+
             print(f"🚀 One-Click Auto Settings:")
             print(f"   Video Duration: {self._format_duration(total_duration)}")
             print(f"   Clips: {num_clips} clips of {gif_duration}s each")
             print(f"   Time Gap: {time_gap:.1f}s between clips")
+            print(f"   Final GIF Resolution: {final_width}x{final_height}") 
             print(f"   Coverage: {self._format_duration(num_clips * gif_duration + (num_clips-1) * time_gap)}")
             print()
             
@@ -203,7 +207,9 @@ class VideoGifConverter(GifConverterInterface):
                 create_grid=True,
                 merge_gifs=False,  # Use video-first workflow (no GIF merging)
                 grid_size=6,  # 6x5 grid for 30 clips
-                cleanup_individual_thumbs=True  # Clean output by default
+                cleanup_individual_thumbs=True,  # Clean output by default
+                final_gif_width=final_width,   # Final GIF resolution
+                final_gif_height=final_height # Final GIF resolution
             )
             
             # Use the existing auto-generation workflow
@@ -466,13 +472,53 @@ class VideoGifConverter(GifConverterInterface):
 
     def _build_quality_filters_for_auto(self, options: AutoGifOptions) -> str:
         """Build FFmpeg filters based on quality for auto workflow"""
-        base = f"fps={options.fps},scale={options.scale_width}:-1:flags=lanczos"
+        # Use final resolution settings
+        final_width = options.final_gif_width
+        final_height = options.final_gif_height
+            
+        # Calculate height automatically if not specified
+        if final_height <= 0:
+            scale_filter = f"scale={final_width}:-1:flags=lanczos"
+        else:
+            scale_filter = f"scale={final_width}:{final_height}:flags=lanczos"
+        
+        base = f"fps={options.fps},{scale_filter}"
         
         if options.quality_level == "high":
             return f"{base},mpdecimate"
         elif options.quality_level == "low":
             return f"{base},mpdecimate=hi=64*12:lo=64*5:frac=0.1"
         return base
+
+    def _get_optimal_final_resolution(self, source_file: str, max_width: int = 1440, max_height: int = 1080) -> Tuple[int, int]:
+        """Calculate optimal final resolution based on source video and limits"""
+        try:
+            # Get source video resolution
+            media_info_result = self.ffmpeg.probe_media(source_file)
+            if media_info_result.success and media_info_result.media_info:
+                source_width = media_info_result.media_info.width or 1920
+                source_height = media_info_result.media_info.height or 1080
+            else:
+                # Fallback resolution
+                source_width, source_height = 1920, 1080
+            
+            # Calculate scaling to fit within max dimensions while maintaining aspect ratio
+            width_scale = max_width / source_width
+            height_scale = max_height / source_height
+            scale = min(width_scale, height_scale, 1.0)  # Don't upscale
+            
+            final_width = int(source_width * scale)
+            final_height = int(source_height * scale)
+            
+            # Ensure even dimensions (required for some codecs)
+            final_width = final_width - (final_width % 2)
+            final_height = final_height - (final_height % 2)
+            
+            return final_width, final_height
+            
+        except Exception as e:
+            print(f"Warning: Could not determine optimal resolution: {e}")
+            return max_width, max_height
 
     def _get_media_info_dict(self, source_file: str) -> Dict[str, str]:
         """Get media info using existing wrapper"""
