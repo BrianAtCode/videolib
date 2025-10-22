@@ -1,8 +1,9 @@
 # VideoLib Dependencies
 # Core video processing library
 
-# NO PYTHON DEPENDENCIES REQUIRED
 # This library only requires FFmpeg (external tool)
+
+pip install Pillow>=9.0.0
 
 # FFmpeg must be installed separately:
 # - Windows: Download from https://ffmpeg.org/download.html

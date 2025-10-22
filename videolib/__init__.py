@@ -29,7 +29,7 @@ __author__ = "Video Processing Team"
 __description__ = "Professional video processing library with FFmpeg integration"
 
 # Convenience imports for backward compatibility
-from .core import download_video, split_video_by_size, clip_video_segments
+from .core import download_video, split_video_by_size, clip_video_segments, create_gif_clips
 
 # Main API classes for easy access
 __all__ = [
@@ -62,6 +62,7 @@ __all__ = [
     'download_video',
     'split_video_by_size', 
     'clip_video_segments',
+    'create_gif_clips',
     
     # Version
     '__version__'
@@ -139,5 +140,25 @@ def quick_clip(source_file: str, output_name: str, intervals: list) -> dict:
         "success": result.success,
         "output_files": result.output_files,
         "failed_clips": result.failed_clips,
+        "error": result.error_message
+    }
+
+def quick_create_gifs(source_file: str, intervals: list, **kwargs) -> dict:
+    """Quick GIF creation function
+    
+    Args:
+        source_file: Source video file
+        intervals: List of intervals with start/end times
+        **kwargs: Additional GIF options (fps, scale_width, quality_level, etc.)
+        
+    Returns:
+        dict: Result with success/error information and GIF files
+    """
+    processor = create_processor()
+    result = processor.create_gif_clips(source_file, intervals, **kwargs)
+    return {
+        "success": result.success,
+        "gif_files": result.gif_files,
+        "thumbnail_files": result.thumbnail_files,
         "error": result.error_message
     }

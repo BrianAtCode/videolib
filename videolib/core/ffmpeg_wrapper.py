@@ -5,8 +5,6 @@ import glob
 import os
 import json
 import subprocess
-import glob
-import re
 from typing import Optional, Dict, Any, Tuple, List
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -294,5 +292,187 @@ class ClipCommand(FFmpegCommand):
                 
         except subprocess.CalledProcessError as e:
             return FFmpegResult(success=False, error_message=f"FFmpeg clip failed: {e.stderr}")
+        except Exception as e:
+            return FFmpegResult(success=False, error_message=str(e))
+    
+from abc import abstractmethod
+from typing import List, Optional
+import os
+import subprocess
+
+class GifCommand(FFmpegCommand):
+    """FFmpeg GIF command - Base class"""
+    
+    def __init__(self, wrapper: FFmpegWrapper, input_path: str, output_path: str, 
+                 start_time: float, duration: float, filters: str, loop_count: int = 0):
+        self.wrapper = wrapper
+        self.input_path = input_path
+        self.output_path = output_path
+        self.start_time = start_time
+        self.duration = duration
+        self.loop_count = loop_count
+        self.filters = filters
+    
+    @abstractmethod
+    def build_command(self) -> List[str]:
+        """Build GIF command - to be implemented by subclasses"""
+        pass
+    
+    def execute(self) -> FFmpegResult:
+        """Execute GIF command"""
+        # Ensure output directory exists
+        out_dir = os.path.dirname(self.output_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        
+        cmd = self.build_command()
+        
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, 
+                         stderr=subprocess.PIPE, text=True)
+            
+            # Verify output file exists
+            if os.path.exists(self.output_path):
+                return FFmpegResult(success=True, output_files=[self.output_path])
+            else:
+                return FFmpegResult(success=False, 
+                                  error_message="Output GIF was not created")
+                
+        except subprocess.CalledProcessError as e:
+            return FFmpegResult(success=False, 
+                              error_message=f"FFmpeg GIF creation failed: {e.stderr}")
+        except Exception as e:
+            return FFmpegResult(success=False, error_message=str(e))
+
+
+class GifOrdinaryCommand(GifCommand):
+    """FFmpeg GIF command using ordinary encoding (no palette)"""
+    
+    def build_command(self) -> List[str]:
+        """Build ordinary GIF command"""
+        
+        return [
+            self.wrapper.ffmpeg_path,
+            "-ss", f"{self.start_time:.3f}",
+            "-t", f"{self.duration:.3f}",
+            "-i", self.input_path,
+            "-vf", self.filters,
+            "-loop", str(self.loop_count),
+            "-y",
+            self.output_path
+        ]
+
+
+class GifColorPaletteCommand(GifCommand):
+    """FFmpeg GIF command using color palette for better quality"""
+    
+    def __init__(self, wrapper: FFmpegWrapper, input_path: str, output_path: str, 
+                 start_time: float, palette_file: str, duration: float, 
+                 filters: str, loop_count: int ,dither: str = "bayer", bayer_scale: int = 5):
+        super().__init__(wrapper, input_path, output_path, start_time, duration, filters, loop_count)
+        self.palette_file = palette_file
+        self.dither = dither
+        self.bayer_scale = bayer_scale
+    
+    def build_command(self) -> List[str]:
+        """Build color palette GIF command"""
+        
+        # Build filter_complex with palette
+        filter_complex = f"[0:v]{self.filters}[x];[x][1:v]paletteuse=dither={self.dither}:bayer_scale={self.bayer_scale}"
+        
+        return [
+            self.wrapper.ffmpeg_path,
+            "-ss", f"{self.start_time:.3f}",
+            "-t", f"{self.duration:.3f}",
+            "-i", self.input_path,
+            "-i", self.palette_file,
+            "-filter_complex", filter_complex,
+            "-loop", str(self.loop_count),
+            "-y",
+            self.output_path
+        ]
+
+
+class ThumbnailCommand(FFmpegCommand):
+    """FFmpeg thumbnail extraction command"""
+    
+    def __init__(self, wrapper: FFmpegWrapper, input_path: str, output_path: str):
+        self.wrapper = wrapper
+        self.input_path = input_path
+        self.output_path = output_path
+    
+    def build_command(self) -> List[str]:
+        """Build thumbnail command"""
+        return [
+            self.wrapper.ffmpeg_path,
+            "-i", self.input_path,
+            "-frames:v", "1",
+            "-q:v", "1",  # Highest quality for thumbnails
+            "-y",
+            self.output_path
+        ]
+    
+    def execute(self) -> FFmpegResult:
+        """Execute thumbnail command"""
+        # Ensure output directory exists
+        out_dir = os.path.dirname(self.output_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        
+        cmd = self.build_command()
+        
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            
+            # Verify output file exists
+            if os.path.exists(self.output_path):
+                return FFmpegResult(success=True, output_files=[self.output_path])
+            else:
+                return FFmpegResult(success=False, error_message="Thumbnail was not created")
+                
+        except subprocess.CalledProcessError as e:
+            return FFmpegResult(success=False, error_message=f"FFmpeg thumbnail extraction failed: {e.stderr}")
+        except Exception as e:
+            return FFmpegResult(success=False, error_message=str(e))
+
+class ColorPaletteCommand(FFmpegCommand):
+    """FFmpeg color palette generation command"""
+    
+    def __init__(self, wrapper: FFmpegWrapper, input_path: str, output_path: str, filters: str):
+        self.wrapper = wrapper
+        self.input_path = input_path
+        self.output_path = output_path
+        self.filters = filters
+    
+    def build_command(self) -> List[str]:
+        """Build color palette command"""
+        return [
+            self.wrapper.ffmpeg_path,
+            "-i", self.input_path,
+            "-vf", f"{self.filters},palettegen=max_colors=256",
+            "-y",
+            self.output_path
+        ]
+    
+    def execute(self) -> FFmpegResult:
+        """Execute color palette command"""
+        # Ensure output directory exists
+        out_dir = os.path.dirname(self.output_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        
+        cmd = self.build_command()
+        
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            
+            # Verify output file exists
+            if os.path.exists(self.output_path):
+                return FFmpegResult(success=True, output_files=[self.output_path])
+            else:
+                return FFmpegResult(success=False, error_message="Palette file was not created")
+                
+        except subprocess.CalledProcessError as e:
+            return FFmpegResult(success=False, error_message=f"FFmpeg palette generation failed: {e.stderr}")
         except Exception as e:
             return FFmpegResult(success=False, error_message=str(e))

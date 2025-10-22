@@ -6,11 +6,13 @@ from .video_processor import VideoProcessor, ProcessorConfig, create_video_proce
 from .downloader import VideoDownloader, DownloadOptions, DownloadResult
 from .splitter import VideoSplitter, SplitOptions, SplitResult
 from .clipper import VideoClipper, ClipOptions, ClipResult, ClipInterval
+from .gif_converter import VideoGifConverter, GifOptions, GifResult, GifInterval, AutoGifOptions
 
 # Backward compatibility functions
 from .downloader import download_video
 from .splitter import split_video_by_size
 from .clipper import clip_video_segments
+from .gif_converter import create_gif_clips
 
 __all__ = [
     # Main classes
@@ -23,6 +25,7 @@ __all__ = [
     'VideoDownloader',
     'VideoSplitter', 
     'VideoClipper',
+    'VideoGifConverter',
     
     # Data structures
     'MediaInfo',
@@ -34,9 +37,14 @@ __all__ = [
     'ClipOptions',
     'ClipResult',
     'ClipInterval',
+    'GifOptions',
+    'GifResult',
+    'GifInterval',
+    'AutoGifOptions',
     
     # Backward compatibility
     'download_video',
     'split_video_by_size',
-    'clip_video_segments'
+    'clip_video_segments',
+    'create_gif_clips',
 ]
