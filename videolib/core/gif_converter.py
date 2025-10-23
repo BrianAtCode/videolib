@@ -120,7 +120,8 @@ class VideoGifConverter(GifConverterInterface):
                     media_info,
                     f"{options.output_name}_grid.png",
                     options.grid_size, 
-                    intervals
+                    intervals,
+                    options=options 
                 )
                 if grid_file:
                     thumbnail_files.append(grid_file)
@@ -165,7 +166,7 @@ class VideoGifConverter(GifConverterInterface):
             if not total_duration or total_duration <= 0:
                 return self._error_result("Invalid video duration", start_time)
             
-            # ✅ AUTOMATIC SETTINGS CALCULATION
+            # AUTOMATIC SETTINGS CALCULATION
             num_clips = 30  # Fixed number of clips as requested
             
             # Calculate optimal clip duration and gap
@@ -182,14 +183,18 @@ class VideoGifConverter(GifConverterInterface):
                 gif_duration = 3.0
                 time_gap = max(0, (total_duration - (num_clips * gif_duration)) / (num_clips - 1)) if num_clips > 1 else 0
             
-            #Calculate optimal final resolution (max 1440x1080)
-            final_width, final_height = self._get_optimal_final_resolution(source_file, 1440, 1080)
+            #Calculate optimal gif resolution (max 1440x1080)
+            final_width, final_height = self._get_optimal_final_resolution(source_file, 720, 360)
 
+            # Calculate optimal grid resolution (max 1440x1080 total)
+            grid_thumb_width, grid_thumb_height = self._get_optimal_grid_resolution(30, 6)  # 30 clips, 6x5 grid
+            
             print(f"🚀 One-Click Auto Settings:")
             print(f"   Video Duration: {self._format_duration(total_duration)}")
             print(f"   Clips: {num_clips} clips of {gif_duration}s each")
             print(f"   Time Gap: {time_gap:.1f}s between clips")
             print(f"   Final GIF Resolution: {final_width}x{final_height}") 
+            print(f"   Grid Thumbnail Size: {grid_thumb_width}x{grid_thumb_height}")
             print(f"   Coverage: {self._format_duration(num_clips * gif_duration + (num_clips-1) * time_gap)}")
             print()
             
@@ -209,7 +214,11 @@ class VideoGifConverter(GifConverterInterface):
                 grid_size=6,  # 6x5 grid for 30 clips
                 cleanup_individual_thumbs=True,  # Clean output by default
                 final_gif_width=final_width,   # Final GIF resolution
-                final_gif_height=final_height # Final GIF resolution
+                final_gif_height=final_height, # Final GIF resolution
+                grid_thumb_width=grid_thumb_width,    # thumbnail width
+                grid_thumb_height=grid_thumb_height,  # thumbnail height
+                grid_max_width=1440,                  # Max grid width
+                grid_max_height=1080                  # Max grid height    
             )
             
             # Use the existing auto-generation workflow
@@ -218,6 +227,29 @@ class VideoGifConverter(GifConverterInterface):
         except Exception as e:
             return self._error_result(str(e), start_time)
 
+    def _get_optimal_grid_resolution(self, num_clips: int, cols: int) -> Tuple[int, int]:
+        """Calculate optimal thumbnail size for grid within 1440x1080 limit"""
+        rows = (num_clips + cols - 1) // cols
+        header_height = 150
+        
+        # Calculate maximum thumbnail size that fits in 1440x1080
+        max_thumb_width = 1440 // cols
+        max_thumb_height = (1080 - header_height) // rows
+        
+        # Use 16:9 aspect ratio for thumbnails, but respect limits
+        target_width = min(240, max_thumb_width)  # Prefer 240px width
+        target_height = int(target_width * 9 / 16)  # 16:9 aspect ratio
+        
+        # Ensure height fits
+        if target_height > max_thumb_height:
+            target_height = max_thumb_height
+            target_width = int(target_height * 16 / 9)
+        
+        # Ensure minimum readable size
+        target_width = max(120, target_width)
+        target_height = max(68, target_height)
+        
+        return target_width, target_height
 
     def _cleanup_individual_thumbnails(self, thumbnail_files: List[str], grid_file: str) -> List[str]:
         """Remove individual thumbnail files, keeping only the grid file"""
@@ -546,31 +578,66 @@ class VideoGifConverter(GifConverterInterface):
                 'audio_codec': 'Unknown', 'width': '0', 'height': '0'}
 
     def _create_enhanced_grid(self, thumb_files: List[str], media_info: Dict[str, str],
-                            output_file: str, grid_size: int, intervals: Optional[List[GifInterval]] = None) -> Optional[str]:
+                            output_file: str, grid_size: int, intervals: Optional[List[GifInterval]] = None, 
+                            options: Optional[AutoGifOptions] = None) -> Optional[str]:
         """Create thumbnail grid with media info (requires PIL)"""
         if not PIL_AVAILABLE:
             return None
             
         try:
+            if not thumb_files:
+                return None
+            
+            # Calculate grid layout with resolution control
+            grid_layout = self._calculate_grid_layout(thumb_files, grid_size, options)
+
             # Load first thumbnail for dimensions
             first_thumb = Image.open(thumb_files[0])
             w, h = first_thumb.size
             first_thumb.close()
             
-            # Calculate layout
-            cols = min(grid_size, len(thumb_files))
-            rows = (len(thumb_files) + cols - 1) // cols
+            # Use calculated thumbnail dimensions
+            thumb_width = grid_layout['thumb_width']
+            thumb_height = grid_layout['thumb_height']
+            cols = grid_layout['cols']
+            rows = grid_layout['rows']
             
             # Create canvas with header space
             header_height = 150
-            canvas = Image.new('RGB', (cols * w, rows * h + header_height), (255, 255, 255))
+            canvas_width = cols * thumb_width
+            canvas_height = rows * thumb_height + header_height
+            
+            #Apply maximum grid size limits
+            if options and (canvas_width > options.grid_max_width or canvas_height > options.grid_max_height):
+                scale_factor = min(
+                    options.grid_max_width / canvas_width,
+                    options.grid_max_height / canvas_height
+                )
+                
+                # Recalculate with scaling
+                thumb_width = int(thumb_width * scale_factor)
+                thumb_height = int(thumb_height * scale_factor)
+                canvas_width = cols * thumb_width
+                canvas_height = rows * thumb_height + int(header_height * scale_factor)
+                header_height = int(header_height * scale_factor)
+                
+                print(f"📏 Scaled to fit limits: {canvas_width}x{canvas_height} (scale: {scale_factor:.2f})")
+            
+            # Create canvas
+            canvas = Image.new('RGB', (canvas_width, canvas_height), (255, 255, 255))
             draw = ImageDraw.Draw(canvas)
+
+            # Scale fonts based on grid size
+            font_scale = min(1.0, canvas_width / 1200)  # Scale fonts for smaller grids
+            title_size = max(12, int(18 * font_scale))
+            info_size = max(10, int(14 * font_scale))
+            timestamp_size = max(8, int(12 * font_scale))
             
             # Load fonts
             try:
-                title_font = ImageFont.truetype("arial.ttf", 18)
-                info_font = ImageFont.truetype("arial.ttf", 14)
-                timestamp_font = ImageFont.truetype("arial.ttf", 12) 
+                title_font = ImageFont.truetype("arial.ttf", title_size)
+                info_font = ImageFont.truetype("arial.ttf", info_size)
+                timestamp_font = ImageFont.truetype("arial.ttf", timestamp_size) 
             except:
                 title_font = info_font = timestamp_font = ImageFont.load_default()
             
@@ -582,71 +649,77 @@ class VideoGifConverter(GifConverterInterface):
             # Format info lines
             duration_str = self._format_duration(float(media_info['duration']))
             size_str = self._format_file_size(int(media_info['size']))
-            
+
             info_lines = [
                 f"Format: {media_info['format']} | Codec: {media_info['video_codec']}",
                 f"Duration: {duration_str} | Size: {size_str}",
                 f"Resolution: {media_info['width']}x{media_info['height']}",
+                f"Grid: {cols}x{rows} ({len(thumb_files)} thumbnails)",
                 f"Created: {media_info['creation_time'][:10]}"
             ]
             
             for line in info_lines:
-                draw.text((15, y), line, fill=(64,64,64), font=info_font)
-                y += 20
-            
-            # Draw separator
-            draw.line([(15, header_height-15), (cols*w-15, header_height-15)], fill=(200,200,200), width=2)
+                draw.text((int(15 * font_scale), y), line, fill=(64,64,64), font=info_font)
+                y += int(20 * font_scale)
             
             # Paste thumbnails
             for i, thumb_file in enumerate(thumb_files[:grid_size*grid_size]):
+                if not os.path.exists(thumb_file):
+                    print(f"Warning: Thumbnail file not found: {thumb_file}")
+                    continue
+                    
                 row, col = divmod(i, cols)
-                x, y = col * w, row * h + header_height
+                x, y = col * thumb_width, row * thumb_height + header_height
                 
                 try:
                     thumb = Image.open(thumb_file)
-                    thumb = thumb.resize((w, h), Image.Resampling.LANCZOS)
+                    # ✅ NEW: Use calculated thumbnail dimensions
+                    thumb = thumb.resize((thumb_width, thumb_height), Image.Resampling.LANCZOS)
                     canvas.paste(thumb, (x, y))
                     thumb.close()
                     
-                    # Calculate timestamp for this thumbnail
+                    # ✅ NEW: Scale timestamp and frame number positioning
                     timestamp_text = self._get_thumbnail_timestamp(i, intervals)
                     
-                    # Draw timestamp background (semi-transparent overlay)
-                    timestamp_width, timestamp_height = self._get_text_size(draw, timestamp_text, timestamp_font)
+                    # Calculate text sizes
+                    timestamp_width = len(timestamp_text) * max(6, int(7 * font_scale))
+                    timestamp_height = max(10, int(14 * font_scale))
                     
-                    # Position timestamp at bottom-left of thumbnail
-                    timestamp_x = x + 5
-                    timestamp_y = y + h - timestamp_height - 5
+                    # Position timestamp at bottom-left
+                    timestamp_x = x + int(5 * font_scale)
+                    timestamp_y = y + thumb_height - timestamp_height - int(5 * font_scale)
                     
-                    # Draw background rectangle for timestamp
+                    # Draw timestamp background and text
                     draw.rectangle([
-                        timestamp_x - 3, timestamp_y - 2,
-                        timestamp_x + timestamp_width + 3, timestamp_y + timestamp_height + 2
-                    ], fill=(0, 0, 0, 180))  # Semi-transparent black background
+                        timestamp_x - 2, timestamp_y - 1,
+                        timestamp_x + timestamp_width + 2, timestamp_y + timestamp_height + 1
+                    ], fill=(0, 0, 0))
                     
-                    # Draw timestamp text in white
-                    draw.text((timestamp_x, timestamp_y), timestamp_text, fill=(255, 255, 255), font=timestamp_font)
+                    draw.text((timestamp_x, timestamp_y), timestamp_text, 
+                            fill=(255, 255, 255), font=timestamp_font)
                     
-                    # Frame number in top-right corner
+                    # Frame number in top-right
                     frame_text = f"#{i+1}"
-                    frame_width, frame_height = self._get_text_size(draw, frame_text, info_font)
+                    frame_width = len(frame_text) * max(6, int(8 * font_scale))
+                    frame_height = max(10, int(14 * font_scale))
                     
-                    frame_x = x + w - frame_width - 8
-                    frame_y = y + 5
+                    frame_x = x + thumb_width - frame_width - int(8 * font_scale)
+                    frame_y = y + int(5 * font_scale)
                     
-                    # Draw background for frame number
                     draw.rectangle([
-                        frame_x - 3, frame_y - 2,
-                        frame_x + frame_width + 3, frame_y + frame_height + 2
-                    ], fill=(0, 100, 200, 200))  # Blue background
+                        frame_x - 2, frame_y - 1,
+                        frame_x + frame_width + 2, frame_y + frame_height + 1
+                    ], fill=(0, 100, 200))
                     
-                    draw.text((frame_x, frame_y), frame_text, fill=(255, 255, 255), font=info_font)
+                    draw.text((frame_x, frame_y), frame_text, 
+                            fill=(255, 255, 255), font=info_font)
                     
                 except Exception as e:
                     print(f"Warning: Failed to process thumbnail {thumb_file}: {e}")
                     continue
             
-            canvas.save(output_file, 'PNG', quality=95)
+            # Save grid image with high quality
+            canvas.save(output_file, 'PNG', quality=95, optimize=True)
             canvas.close()
             return output_file
             
@@ -714,6 +787,31 @@ class VideoGifConverter(GifConverterInterface):
             error_message=message, 
             processing_time=time.time() - start_time
         )
+    
+    def _calculate_grid_layout(self, thumb_files: List[str], grid_size: int, 
+                         options: Optional[AutoGifOptions] = None) -> Dict[str, int]:
+        """Calculate optimal grid layout with resolution control"""
+        num_files = len(thumb_files)
+        
+        # Calculate grid dimensions
+        cols = min(grid_size, num_files)
+        rows = (num_files + cols - 1) // cols
+        
+        # ✅ NEW: Use option-specified thumbnail dimensions or defaults
+        if options:
+            thumb_width = options.grid_thumb_width
+            thumb_height = options.grid_thumb_height
+        else:
+            # Default thumbnail dimensions
+            thumb_width = 160
+            thumb_height = 90
+        
+        return {
+            'cols': cols,
+            'rows': rows,
+            'thumb_width': thumb_width,
+            'thumb_height': thumb_height
+        }
 
 # Convenience functions
 def create_gif_clips(source_file: str, total_duration: float, num_clips: int,

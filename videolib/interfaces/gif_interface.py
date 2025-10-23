@@ -51,6 +51,10 @@ class AutoGifOptions:
     cleanup_individual_thumbs: bool = False
     final_gif_width: int = 640 
     final_gif_height: int = 0  
+    grid_thumb_width: int = 160    
+    grid_thumb_height: int = 90    
+    grid_max_width: int = 1920 
+    grid_max_height: int = 1080
 
 class GifConverterInterface(ABC):
     """Abstract interface for GIF conversion operations"""
